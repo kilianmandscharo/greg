@@ -14,7 +14,7 @@ mod time_of_day;
 fn main() -> io::Result<()> {
     enable_raw_mode()?;
 
-    let start = TimeOfDay::new(6, 0);
+    let start = TimeOfDay::new(8, 0);
     let end = TimeOfDay::new(20, 0);
 
     let canvas = Canvas::new(start, end, size()?, cursor::position()?);

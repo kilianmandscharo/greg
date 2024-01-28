@@ -34,14 +34,14 @@ impl Canvas {
         }
     }
 
+    fn total_minutes(&self) -> u16 {
+        self.end_time.total_minutes() - self.start_time.total_minutes()
+    }
+
     fn get_x_position_by_tod(&self, time_of_day: &TimeOfDay) -> u16 {
-        let minutes = time_of_day.total_minutes() as f32;
-        let end_minutes = self.end_time.total_minutes() as f32;
-        let start_minutes = self.start_time.total_minutes() as f32;
+        let minutes_per_col = self.total_minutes() / self.width;
 
-        let x = (minutes - start_minutes - 60.0) / (end_minutes - start_minutes);
-
-        (x * self.width as f32).floor() as u16
+        (time_of_day.total_minutes() - self.start_time.total_minutes()) / minutes_per_col
     }
 
     fn print(&self, x: u16, y: u16, content: &str, fg: Color, bg: Color) -> io::Result<()> {
@@ -56,12 +56,9 @@ impl Canvas {
     }
 
     pub fn render_grid(&self) -> io::Result<()> {
-        let n_hours = self.end_time.hour - self.start_time.hour;
-        let cols_per_hour = self.width / n_hours;
-
-        for i in 0..=n_hours {
-            let time = TimeOfDay::new(i + self.start_time.hour, 0);
-            let x = i * cols_per_hour;
+        for hour in self.start_time.hour..=self.end_time.hour {
+            let time = TimeOfDay::new(hour, 0);
+            let x = self.get_x_position_by_tod(&time);
 
             for i in 0..3 {
                 self.print(x, 1 + i, "|", Color::White, Color::Reset)?;
@@ -70,8 +67,10 @@ impl Canvas {
             self.print(x, 0, &time.to_string(), Color::White, Color::Reset)?;
         }
 
-        let now = chrono::offset::Local::now();
-        let now = TimeOfDay::new(now.hour() as u16, now.minute() as u16);
+        // let now = chrono::offset::Local::now();
+        // let now = TimeOfDay::new(now.hour() as u16, now.minute() as u16);
+
+        let now = TimeOfDay::new(15, 45);
 
         let x = self.get_x_position_by_tod(&now);
 
@@ -85,7 +84,7 @@ impl Canvas {
     }
 
     pub fn move_cursor_to_end(&self) -> io::Result<()> {
-        io::stdout().execute(MoveTo(0, 4 + self.y_offset))?;
+        io::stdout().execute(MoveTo(0, 6 + self.y_offset))?;
         Ok(())
     }
 
