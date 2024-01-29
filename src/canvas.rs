@@ -6,7 +6,10 @@ use crossterm::{
 };
 use std::io;
 
-use crate::{block::Block, time_of_day::TimeOfDay};
+use crate::{
+    block::Block,
+    time_of_day::{StepType, TimeOfDay, TimeOfDayRange},
+};
 
 pub struct Canvas {
     width: u16,
@@ -15,33 +18,36 @@ pub struct Canvas {
     x_offset: u16,
     start_time: TimeOfDay,
     end_time: TimeOfDay,
+    step_type: StepType,
 }
 
 impl Canvas {
     pub fn new(
         start_time: TimeOfDay,
         end_time: TimeOfDay,
+        step_type: StepType,
         dimensions: (u16, u16),
         offset: (u16, u16),
     ) -> Self {
         Self {
             start_time,
             end_time,
+            step_type,
             width: dimensions.0,
             _height: dimensions.1,
-            x_offset: offset.0,
+            x_offset: offset.0 + 1,
             y_offset: offset.1,
         }
     }
 
     fn total_minutes(&self) -> u16 {
-        self.end_time.total_minutes() - self.start_time.total_minutes()
+        self.end_time.total - self.start_time.total
     }
 
     fn get_x_position_by_tod(&self, time_of_day: &TimeOfDay) -> u16 {
-        let minutes_per_col = self.total_minutes() / self.width;
+        let minutes_per_col = (self.total_minutes() as f32 / self.width as f32).ceil() as u16;
 
-        (time_of_day.total_minutes() - self.start_time.total_minutes()) / minutes_per_col
+        (time_of_day.total - self.start_time.total) / minutes_per_col
     }
 
     fn print(&self, x: u16, y: u16, content: &str, fg: Color, bg: Color) -> io::Result<()> {
@@ -55,49 +61,119 @@ impl Canvas {
         Ok(())
     }
 
-    pub fn render_grid(&self) -> io::Result<()> {
-        for hour in self.start_time.hour..=self.end_time.hour {
-            let time = TimeOfDay::new(hour, 0);
+    fn render_grid(&self, max_y: u16) -> io::Result<()> {
+        let time_range =
+            TimeOfDayRange::new(self.start_time, self.end_time, self.step_type).unwrap();
+
+        for time in time_range {
             let x = self.get_x_position_by_tod(&time);
 
-            for i in 0..3 {
-                self.print(x, 1 + i, "|", Color::White, Color::Reset)?;
+            for i in 0..max_y + 1 {
+                self.print(x, 1 + i, "⎸", Color::White, Color::Reset)?;
             }
 
             self.print(x, 0, &time.to_string(), Color::White, Color::Reset)?;
         }
 
-        // let now = chrono::offset::Local::now();
-        // let now = TimeOfDay::new(now.hour() as u16, now.minute() as u16);
+        Ok(())
+    }
 
-        let now = TimeOfDay::new(15, 45);
+    fn move_cursor_to_end(&self, max_y: u16) -> io::Result<()> {
+        io::stdout().execute(MoveTo(0, max_y + self.y_offset + 2))?;
+        Ok(())
+    }
+
+    pub fn create_block(
+        &self,
+        start: TimeOfDay,
+        end: TimeOfDay,
+        title: String,
+        description: String,
+    ) -> Block {
+        let x1 = self.get_x_position_by_tod(&start);
+        let x2 = self.get_x_position_by_tod(&end);
+        Block::new(start, end, title, description, x1, 0, x2 - x1, 2)
+    }
+
+    fn position_blocks(&self, blocks: Vec<Block>) -> Vec<Block> {
+        let mut positioned_blocks: Vec<Block> = Vec::new();
+
+        for block in blocks {
+            let mut new_block = block.clone();
+
+            loop {
+                if new_block.intersects_any(&positioned_blocks) {
+                    new_block.y += 1;
+                } else {
+                    break;
+                }
+            }
+
+            positioned_blocks.push(new_block);
+        }
+
+        positioned_blocks
+    }
+
+    fn render_blocks(&self, blocks: Vec<Block>) -> io::Result<()> {
+        let positioned_blocks = self.position_blocks(blocks);
+
+        for block in positioned_blocks {
+            self.render_block(&block)?;
+        }
+
+        Ok(())
+    }
+
+    fn render_block(&self, block: &Block) -> io::Result<()> {
+        self.print(
+            block.x,
+            block.y + 2,
+            &self.pad_string(&block.start.to_string(), block.width as usize),
+            Color::Black,
+            Color::Green,
+        )?;
+        self.print(
+            block.x,
+            block.y + 3,
+            &self.pad_string(&block.title, block.width as usize),
+            Color::Black,
+            Color::Green,
+        )?;
+
+        Ok(())
+    }
+
+    fn render_now(&self, max_y: u16) -> io::Result<()> {
+        let now = chrono::offset::Local::now();
+        let now = TimeOfDay::new(now.hour() as u16, now.minute() as u16);
 
         let x = self.get_x_position_by_tod(&now);
 
-        for i in 0..4 {
-            self.print(x, 2 + i, "|", Color::Green, Color::Reset)?;
+        for i in 0..max_y + 2 {
+            self.print(x, 1 + i, "⎸", Color::Green, Color::Reset)?;
         }
 
-        self.print(x, 5, &now.to_string(), Color::Green, Color::Reset)?;
+        self.print(x, max_y + 3, &now.to_string(), Color::Green, Color::Reset)?;
 
         Ok(())
     }
 
-    pub fn move_cursor_to_end(&self) -> io::Result<()> {
-        io::stdout().execute(MoveTo(0, 6 + self.y_offset))?;
-        Ok(())
+    fn pad_string(&self, s: &str, width: usize) -> String {
+        format!("{}{}", s, " ".repeat(width - s.len()))
     }
 
-    pub fn render_block(&self, block: &Block) -> io::Result<()> {
-        let x = self.get_x_position_by_tod(&block.start);
+    pub fn render(&self, blocks: Vec<Block>) -> io::Result<()> {
+        let positioned_blocks = self.position_blocks(blocks);
 
-        self.print(x, 1, &block.title, Color::Black, Color::Green)?;
+        let max_y = positioned_blocks.iter().map(|block| block.y).max().unwrap()
+            + positioned_blocks[0].height
+            + 1;
 
-        for i in 0..4 {
-            self.print(x, 2 + i, "|", Color::Green, Color::Reset)?;
-        }
-
-        self.print(x, 5, &block.start.to_string(), Color::Green, Color::Reset)?;
+        self.render_grid(max_y)?;
+        self.render_now(max_y)?;
+        self.render_blocks(positioned_blocks)?;
+        self.move_cursor_to_end(max_y)?;
 
         Ok(())
     }
