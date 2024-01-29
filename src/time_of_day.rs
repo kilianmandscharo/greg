@@ -40,7 +40,7 @@ impl TimeOfDay {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum StepType {
     Hour(u16),
     Minute(u16),

@@ -18,21 +18,18 @@ pub struct Canvas {
     x_offset: u16,
     start_time: TimeOfDay,
     end_time: TimeOfDay,
-    step_type: StepType,
 }
 
 impl Canvas {
     pub fn new(
         start_time: TimeOfDay,
         end_time: TimeOfDay,
-        step_type: StepType,
         dimensions: (u16, u16),
         offset: (u16, u16),
     ) -> Self {
         Self {
             start_time,
             end_time,
-            step_type,
             width: dimensions.0,
             _height: dimensions.1,
             x_offset: offset.0 + 1,
@@ -63,7 +60,7 @@ impl Canvas {
 
     fn render_grid(&self, max_y: u16) -> io::Result<()> {
         let time_range =
-            TimeOfDayRange::new(self.start_time, self.end_time, self.step_type).unwrap();
+            TimeOfDayRange::new(self.start_time, self.end_time, self.get_step_type()).unwrap();
 
         for time in time_range {
             let x = self.get_x_position_by_tod(&time);
@@ -176,5 +173,28 @@ impl Canvas {
         self.move_cursor_to_end(max_y)?;
 
         Ok(())
+    }
+
+    fn get_step_type(&self) -> StepType {
+        let n_labels = self.width / 6;
+        let total = self.total_minutes();
+
+        if total / 15 <= n_labels {
+            return StepType::Minute(15);
+        }
+
+        if total / 30 <= n_labels {
+            return StepType::Minute(30);
+        }
+
+        if total / 60 <= n_labels {
+            return StepType::Hour(1);
+        }
+
+        if total / 120 <= n_labels {
+            return StepType::Hour(2);
+        }
+
+        StepType::Hour(3)
     }
 }

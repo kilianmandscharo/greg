@@ -4,7 +4,7 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, size},
 };
 use std::io;
-use time_of_day::{StepType, TimeOfDay};
+use time_of_day::TimeOfDay;
 
 mod block;
 mod canvas;
@@ -13,10 +13,10 @@ mod time_of_day;
 fn main() -> io::Result<()> {
     enable_raw_mode()?;
 
-    let start = TimeOfDay::new(12, 0);
+    let start = TimeOfDay::new(0, 0);
     let end = TimeOfDay::new(23, 59);
 
-    let canvas = Canvas::new(start, end, StepType::Hour(1), size()?, cursor::position()?);
+    let canvas = Canvas::new(start, end, size()?, cursor::position()?);
 
     let blocks = vec![
         canvas.create_block(
